@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background-color: theme("colors.canvas");
+  color: theme("colors.ink");
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Thin, unobtrusive scrollbars to match the clean UI */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d8d4cc transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #d8d4cc;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  .card {
+    @apply bg-surface border border-line rounded-card shadow-card;
+  }
+  .field-label {
+    @apply text-[13px] font-medium text-ink-soft mb-1.5 block;
+  }
+  .input {
+    @apply w-full h-11 px-3.5 rounded-lg border border-line-strong bg-surface text-[14px] text-ink
+      outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/15 transition;
+  }
+  .select {
+    @apply input appearance-none pr-9 cursor-pointer;
+  }
+  /* Auth screens: borderless input that lives inside a bordered wrapper */
+  .auth-input {
+    @apply w-full bg-transparent text-[14.5px] text-ink outline-none placeholder:text-muted/70;
+  }
+}
+
+.satellite-fade {
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 1));
+}
+
+/* -------------------------------------------------------- micro-animations */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-toast-in { animation: toast-in 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-auth-in { animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Route content gently fades in */
+main > div { animation: fade-in-up 0.28s ease-out; }
+
+/* Cards lift slightly on hover for tactile feedback */
+.card {
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+.card-interactive:hover {
+  box-shadow: 0 8px 28px rgba(24, 20, 15, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Subtle press feedback — opt-in so it never clobbers transform-positioned
+   controls (e.g. the comparison slider handle). Add `press` to a button. */
+.press:active:not(:disabled) { transform: translateY(0.5px); }
+
+@media (prefers-reduced-motion: reduce) {
+  main > div, .animate-toast-in, .card { animation: none !important; transition: none !important; }
+}

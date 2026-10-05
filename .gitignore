@@ -1,0 +1,36 @@
+# Dependencies
+**/node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output
+**/.next/
+**/out/
+**/build/
+**/dist/
+
+# Environment
+**/.env
+**/.env.local
+**/.env*.local
+
+# Python (backend)
+**/__pycache__/
+**/*.pyc
+backend/.venv/
+**/.venv/
+**/venv/
+
+# Logs & OS cruft
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# TypeScript build info
+*.tsbuildinfo
+next-env.d.ts

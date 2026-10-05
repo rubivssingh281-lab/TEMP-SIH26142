@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bhudristi-backend.fullname" . }}-api
+  labels:
+    {{- include "bhudristi-backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "bhudristi-backend.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "bhudristi-backend.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: ENVIRONMENT
+              value: production
+            - name: POSTGRES_SERVER
+              value: {{ .Values.postgres.host | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.db | quote }}
+            - name: REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: S3_ENDPOINT_URL
+              value: "http://{{ .Values.minio.endpoint }}"
+            - name: USE_REAL_GEOSPATIAL
+              value: {{ .Values.processing.useRealGeospatial | quote }}
+            - name: INFERENCE_BACKEND
+              value: {{ .Values.processing.inferenceBackend | quote }}
+            - name: INFERENCE_FACTORY
+              value: {{ .Values.processing.inferenceFactory | quote }}
+            - name: AUTH_ENABLED
+              value: {{ .Values.processing.authEnabled | quote }}
+            - name: OIDC_ISSUER_URL
+              value: {{ .Values.oidc.issuerUrl | quote }}
+            - name: OIDC_AUDIENCE
+              value: {{ .Values.oidc.audience | quote }}
+            - name: OIDC_JWKS_URL
+              value: {{ .Values.oidc.jwksUrl | quote }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}

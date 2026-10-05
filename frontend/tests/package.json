@@ -1,0 +1,4 @@
+{
+  "//": "Scopes the tests directory to ES modules so Node's TS/mjs runner is quiet.",
+  "type": "module"
+}

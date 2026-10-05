@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="भू dristi satellite logo">
+  <defs>
+    <linearGradient id="bd-sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FCC65A"/>
+      <stop offset="55%" stop-color="#F7A63C"/>
+      <stop offset="100%" stop-color="#EE6E1E"/>
+    </linearGradient>
+    <clipPath id="bd-clip"><circle cx="256" cy="256" r="176"/></clipPath>
+  </defs>
+
+  <!-- grey orbit ring -->
+  <path d="M256 40 a216 216 0 0 1 152 369" fill="none" stroke="#B9BCC2" stroke-width="16" stroke-linecap="round"/>
+  <path d="M256 472 a216 216 0 0 1 -150 -66" fill="none" stroke="#B9BCC2" stroke-width="16" stroke-linecap="round"/>
+
+  <!-- striped sun -->
+  <g clip-path="url(#bd-clip)">
+    <rect x="80" y="80" width="352" height="352" fill="url(#bd-sun)"/>
+    <g fill="#ffffff">
+      <rect x="60" y="120" width="392" height="12"/>
+      <rect x="60" y="168" width="392" height="12"/>
+      <rect x="60" y="216" width="392" height="12"/>
+      <rect x="60" y="264" width="392" height="12"/>
+      <rect x="60" y="312" width="392" height="12"/>
+    </g>
+  </g>
+
+  <!-- sparkle stars -->
+  <g fill="#111827">
+    <path d="M120 150 l7 22 l22 7 l-22 7 l-7 22 l-7 -22 l-22 -7 l22 -7 z" transform="scale(0.7)" transform-origin="120 150"/>
+    <path d="M410 150 l6 18 l18 6 l-18 6 l-6 18 l-6 -18 l-18 -6 l18 -6 z"/>
+    <path d="M430 360 l6 18 l18 6 l-18 6 l-6 18 l-6 -18 l-18 -6 l18 -6 z"/>
+    <path d="M96 330 l6 18 l18 6 l-18 6 l-6 18 l-6 -18 l-18 -6 l18 -6 z"/>
+  </g>
+
+  <!-- satellite -->
+  <g transform="rotate(-32 256 256)">
+    <!-- solar wing (upper) -->
+    <g stroke="#111827" stroke-width="9" stroke-linejoin="round">
+      <rect x="286" y="150" width="150" height="86" rx="4" fill="#ffffff"/>
+      <line x1="336" y1="150" x2="336" y2="236"/><line x1="386" y1="150" x2="386" y2="236"/>
+      <line x1="286" y1="193" x2="436" y2="193"/>
+    </g>
+    <!-- solar wing (lower) -->
+    <g stroke="#111827" stroke-width="9" stroke-linejoin="round">
+      <rect x="76" y="276" width="150" height="86" rx="4" fill="#ffffff"/>
+      <line x1="126" y1="276" x2="126" y2="362"/><line x1="176" y1="276" x2="176" y2="362"/>
+      <line x1="76" y1="319" x2="226" y2="319"/>
+    </g>
+    <!-- connecting boom -->
+    <rect x="226" y="243" width="70" height="26" fill="#111827"/>
+    <!-- body -->
+    <rect x="196" y="212" width="120" height="88" rx="20" fill="#111827"/>
+    <rect x="210" y="224" width="16" height="64" rx="8" fill="#ffffff" opacity="0.85"/>
+    <!-- dish -->
+    <g transform="rotate(60 320 320)">
+      <ellipse cx="320" cy="320" rx="70" ry="52" fill="#ffffff" stroke="#111827" stroke-width="10"/>
+      <ellipse cx="320" cy="320" rx="42" ry="30" fill="none" stroke="#111827" stroke-width="7"/>
+      <line x1="320" y1="320" x2="320" y2="378" stroke="#111827" stroke-width="9"/>
+      <circle cx="320" cy="384" r="12" fill="#111827"/>
+    </g>
+  </g>
+</svg>

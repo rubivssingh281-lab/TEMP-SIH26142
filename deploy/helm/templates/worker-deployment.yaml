@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bhudristi-backend.fullname" . }}-worker
+  labels:
+    {{- include "bhudristi-backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "bhudristi-backend.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "bhudristi-backend.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          command: ["celery"]
+          args: ["-A", "app.workers.celery_app", "worker", "--loglevel=info", "--concurrency=1"]
+          env:
+            - name: ENVIRONMENT
+              value: production
+            - name: POSTGRES_SERVER
+              value: {{ .Values.postgres.host | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.db | quote }}
+            - name: REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: S3_ENDPOINT_URL
+              value: "http://{{ .Values.minio.endpoint }}"
+            - name: USE_REAL_GEOSPATIAL
+              value: {{ .Values.processing.useRealGeospatial | quote }}
+            - name: INFERENCE_BACKEND
+              value: {{ .Values.processing.inferenceBackend | quote }}
+            - name: INFERENCE_FACTORY
+              value: {{ .Values.processing.inferenceFactory | quote }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}

@@ -1,0 +1,53 @@
+api:
+  replicaCount: 3
+  image:
+    repository: harbor.local/bhudristi/api
+    tag: "latest"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+worker:
+  image:
+    repository: harbor.local/bhudristi/worker
+    tag: "latest"
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+      memory: 16Gi
+    requests:
+      cpu: 2000m
+      memory: 8Gi
+
+keda:
+  enabled: true
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  redis:
+    queueName: celery
+    address: redis-master:6379
+
+postgres:
+  host: pg-cluster
+  db: bhudristi
+
+redis:
+  host: redis-master
+
+minio:
+  endpoint: minio.default.svc.cluster.local:9000
+
+processing:
+  useRealGeospatial: true
+  inferenceBackend: mock
+  inferenceFactory: ""
+  authEnabled: true
+
+oidc:
+  issuerUrl: http://keycloak.default.svc.cluster.local/realms/bhudristi
+  audience: account
+  jwksUrl: http://keycloak.default.svc.cluster.local/realms/bhudristi/protocol/openid-connect/certs
