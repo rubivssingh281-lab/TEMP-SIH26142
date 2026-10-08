@@ -1,4 +1,4 @@
-# Bhu-Dristi
+# Bhu-Dristi (SIH26142-TEAM ORCAS)
 
 **Deep Learning Based Super Resolution Mapping (SRM) from Medium Resolution Satellite Imageries**
 Smart India Hackathon 2026 · Problem Statement **26142** · **NTRO** · Category: Software · Theme: Space Technology
