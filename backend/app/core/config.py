@@ -24,9 +24,16 @@ class Settings(BaseSettings):
     MAX_RASTER_PIXELS: int = 50_000_000
     MAX_RASTER_BANDS: int = 16
     USE_REAL_GEOSPATIAL: bool = False
-    INFERENCE_BACKEND: str = "mock"
-    INFERENCE_FACTORY: Optional[str] = None
+    INFERENCE_BACKEND: str = "geosrnet"
+    INFERENCE_FACTORY: Optional[str] = "app.services.geosrnet_inference:create_geosrnet_service"
     JOB_TIMEOUT_SECONDS: int = 3600
+
+    # GeoSRNet model checkpoint
+    GEOSRNET_CHECKPOINT_PATH: Optional[str] = None
+
+    # Storage backend: "local" (filesystem) or "s3" (MinIO / S3)
+    STORAGE_BACKEND: str = "local"
+    LOCAL_STORAGE_DIR: str = str((Path(__file__).resolve().parents[2] / "data" / "jobs").resolve())
 
     # Database URL override (e.g. Supabase Session Pooler: postgresql://...)
     RAW_DATABASE_URL: Optional[str] = Field(default=None, alias="DATABASE_URL")
@@ -37,6 +44,12 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "bhudristi"
     POSTGRES_PORT: int = 5432
+
+    @property
+    def _default_sqlite_path(self) -> Path:
+        data_dir = Path(__file__).resolve().parents[2] / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        return (data_dir / "geosr.db").resolve()
     
     @property
     def DATABASE_URL(self) -> str:
@@ -47,7 +60,8 @@ class Settings(BaseSettings):
             if raw.startswith("sqlite://") and not raw.startswith("sqlite+aiosqlite://"):
                 return raw.replace("sqlite://", "sqlite+aiosqlite://", 1)
             return raw
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        # Default to SQLite for local dev (no Postgres needed)
+        return f"sqlite+aiosqlite:///{self._default_sqlite_path.as_posix()}"
     
     @property
     def SYNC_DATABASE_URL(self) -> str:
@@ -55,8 +69,11 @@ class Settings(BaseSettings):
             raw = self.RAW_DATABASE_URL
             if raw.startswith("postgresql://"):
                 return raw.replace("postgresql://", "postgresql+psycopg2://", 1)
+            if raw.startswith("sqlite+aiosqlite://"):
+                return raw.replace("sqlite+aiosqlite://", "sqlite://", 1)
             return raw
-        return f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        # Default to SQLite for local dev
+        return f"sqlite:///{self._default_sqlite_path.as_posix()}"
 
     # Redis (Broker & Cache)
     REDIS_HOST: str = "localhost"

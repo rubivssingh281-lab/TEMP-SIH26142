@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Clock,
   Boxes,
@@ -34,12 +35,39 @@ import type { JobDetail } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export default function QueuePage() {
+  return (
+    <Suspense fallback={<div className="p-6"><LoadingState /></div>}>
+      <QueuePageContent />
+    </Suspense>
+  );
+}
+
+function QueuePageContent() {
+  const searchParams = useSearchParams();
+  const newJobParam = searchParams.get("new");
+
   const [status, setStatus] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
   const [q, setQ] = useState("");
-  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(newJobParam);
 
   const { data, error, loading, refetch } = useFetch(() => api.getQueue({ status, q }), [status, q]);
+
+  useEffect(() => {
+    if (newJobParam) {
+      setExpandedJobId(newJobParam);
+    }
+  }, [newJobParam]);
+
+  // Live polling whenever any job is processing or queued so progress updates in real time
+  useEffect(() => {
+    const hasRunning = data?.jobs?.some((j) => j.status === "processing" || j.status === "queued");
+    if (!hasRunning) return;
+    const interval = setInterval(() => {
+      refetch();
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [data?.jobs, refetch]);
 
   // Auto-expand first processing job when data loads
   const activeJobs = useMemo(() => {
@@ -547,6 +575,13 @@ function JobRow({
                     {job.eta ?? "—"}
                   </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => downloadJob(job.job_id)}
+                  className="mt-2.5 w-full h-8 inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#D2691E]/30 bg-[#D2691E]/10 hover:bg-[#D2691E]/20 text-[#D2691E] text-[12px] font-semibold transition cursor-pointer"
+                >
+                  <Download size={13} /> Download Detailed Audit Report (PDF)
+                </button>
               </div>
             </div>
           </td>

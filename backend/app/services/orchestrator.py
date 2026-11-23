@@ -132,16 +132,6 @@ class Orchestrator:
                 "degradation_tier": 0,
                 "validation_level": ["self_consistency"]
             })
-            if bounds:
-                manifest["bounds"] = bounds
-            else:
-                manifest["bounds"] = geo_meta.get("bounds")
-            uncertainty = np.asarray(sr_result.uncertainty)
-            manifest["confidence_summary"] = {
-                "high": round(float(np.mean(uncertainty <= 0.33)), 6),
-                "medium": round(float(np.mean((uncertainty > 0.33) & (uncertainty <= 0.66))), 6),
-                "low": round(float(np.mean(uncertainty > 0.66)), 6),
-            }
             logger.info(f"Job {job_id} completed successfully.")
             
         except Exception as e:

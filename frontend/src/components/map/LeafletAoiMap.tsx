@@ -34,6 +34,184 @@ export interface AoiData {
   isLocked: boolean;
   bounds?: [[number, number], [number, number]];
   regionName?: string;
+  snapshotBase64?: string;
+}
+
+/**
+ * Capture high-resolution raster snapshot of the specified AOI.
+ * Strictly captures and crops ONLY within the orange boundary polygon.
+ * Queries ArcGIS World Imagery export REST endpoint for precise georeferenced bbox,
+ * falling back to local satellite imagery if offline, and clips strictly to the polygon path.
+ */
+export async function captureAoiMapSnapshot(
+  coords: [number, number][],
+  map?: L.Map | null,
+  regionName?: string
+): Promise<string> {
+  if (!coords || coords.length === 0) {
+    coords = [
+      [34.246, 77.545],
+      [34.251, 77.575],
+      [34.238, 77.592],
+      [34.221, 77.578],
+      [34.217, 77.548],
+    ];
+  }
+
+  const minLat = Math.min(...coords.map((c) => c[0]));
+  const maxLat = Math.max(...coords.map((c) => c[0]));
+  const minLng = Math.min(...coords.map((c) => c[1]));
+  const maxLng = Math.max(...coords.map((c) => c[1]));
+
+  // Exact bounding box of the orange boundary (no artificial margin)
+  const bbox = `${minLng.toFixed(6)},${minLat.toFixed(6)},${maxLng.toFixed(6)},${maxLat.toFixed(6)}`;
+  const arcgisUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=512,512&f=image`;
+
+  // Function to render clipped image strictly inside the orange polygon boundary
+  const renderClippedToCanvas = (sourceImg: HTMLImageElement): string => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+
+    const latSpan = maxLat - minLat || 0.0001;
+    const lngSpan = maxLng - minLng || 0.0001;
+    const points = coords.map(([lat, lng]) => ({
+      x: ((lng - minLng) / lngSpan) * 512,
+      y: ((maxLat - lat) / latSpan) * 512,
+    }));
+
+    // 1. Dark terrain backdrop
+    ctx.fillStyle = "#141814";
+    ctx.fillRect(0, 0, 512, 512);
+
+    // 2. Clip strictly inside the orange boundary polygon
+    ctx.save();
+    ctx.beginPath();
+    points.forEach((pt, i) => {
+      if (i === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.closePath();
+    ctx.clip(); // Canvas drawing restricted ONLY to inside the orange boundary!
+
+    // 3. Draw satellite imagery within clipped boundary
+    ctx.drawImage(sourceImg, 0, 0, 512, 512);
+    ctx.restore();
+
+    // 4. Draw high-visibility orange boundary stroke around the clipped AOI
+    ctx.save();
+    ctx.beginPath();
+    points.forEach((pt, i) => {
+      if (i === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = "#D6532B";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+
+    return canvas.toDataURL("image/png");
+  };
+
+  // 1. Try ArcGIS World Imagery Export REST service
+  try {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const loaded = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), 2400);
+      img.onload = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        resolve(false);
+      };
+      img.src = arcgisUrl;
+    });
+
+    if (loaded && img.naturalWidth > 0) {
+      const dataUrl = renderClippedToCanvas(img);
+      if (dataUrl) return dataUrl;
+    }
+  } catch (err) {
+    console.warn("ArcGIS export capture error:", err);
+  }
+
+  // 2. Fallback: Local real high-resolution satellite imagery from /imagery/ clipped to boundary
+  try {
+    const reg = (regionName || "").toLowerCase();
+    let localSrc = "/imagery/urban-dense.jpg";
+    if (reg.includes("ladakh")) localSrc = "/imagery/urban-suburb.jpg";
+    else if (reg.includes("siachen") || reg.includes("snow")) localSrc = "/imagery/fields-road.jpg";
+    else if (reg.includes("arunachal")) localSrc = "/imagery/forest-lake.jpg";
+    else if (reg.includes("thar")) localSrc = "/imagery/fields-1.jpg";
+    else if (reg.includes("pangong") || reg.includes("water")) localSrc = "/imagery/forest-lake.jpg";
+
+    const localImg = new Image();
+    const loaded = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), 1500);
+      localImg.onload = () => resolve(true);
+      localImg.onerror = () => resolve(false);
+      localImg.src = localSrc;
+    });
+
+    if (loaded && localImg.naturalWidth > 0) {
+      const dataUrl = renderClippedToCanvas(localImg);
+      if (dataUrl) return dataUrl;
+    }
+  } catch (err) {
+    console.warn("Local satellite image fallback error:", err);
+  }
+
+  // 3. Fallback: Procedural terrain canvas clipped to boundary
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const latSpan = maxLat - minLat || 0.0001;
+    const lngSpan = maxLng - minLng || 0.0001;
+    const points = coords.map(([lat, lng]) => ({
+      x: ((lng - minLng) / lngSpan) * 512,
+      y: ((maxLat - lat) / latSpan) * 512,
+    }));
+    ctx.fillStyle = "#141814";
+    ctx.fillRect(0, 0, 512, 512);
+
+    ctx.save();
+    ctx.beginPath();
+    points.forEach((pt, i) => {
+      if (i === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.closePath();
+    ctx.clip();
+
+    const grad = ctx.createLinearGradient(0, 0, 512, 512);
+    grad.addColorStop(0, "#4a5335");
+    grad.addColorStop(0.5, "#6a7350");
+    grad.addColorStop(1, "#3f462c");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    points.forEach((pt, i) => {
+      if (i === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = "#D6532B";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
+  return canvas.toDataURL("image/png");
 }
 
 export interface PresetLocation {
@@ -43,6 +221,21 @@ export interface PresetLocation {
   lng: number;
   zoom: number;
   defaultPolygon: [number, number][];
+}
+
+/**
+ * Asian Geographic Training Domain Bounding Box:
+ * Supported operational domain for the Asian-trained GeoSRNet model:
+ * Latitude: -12.0° to 82.0°
+ * Longitude: 25.0° to 180.0°
+ */
+export const ASIA_BOUNDS: [[number, number], [number, number]] = [
+  [-12.0, 25.0], // South-West (Indian Ocean / Anatolia-Suez corridor)
+  [82.0, 180.0], // North-East (Arctic Siberia / Bering Strait / Japan)
+];
+
+export function isWithinAsiaDomain(lat: number, lng: number): boolean {
+  return lat >= -12.0 && lat <= 82.0 && lng >= 25.0 && lng <= 180.0;
 }
 
 export const PRESET_REGIONS: PresetLocation[] = [
@@ -161,7 +354,9 @@ export function LeafletAoiMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const polygonLayerRef = useRef<L.Polygon | null>(null);
-  const vertexMarkersRef = useRef<L.CircleMarker[]>([]);
+  const vertexMarkersRef = useRef<L.Marker[]>([]);
+  const centerMarkerRef = useRef<L.Marker | null>(null);
+  const coordsRef = useRef<[number, number][]>([]);
   const baseLayersRef = useRef<{ [key: string]: L.TileLayer }>({});
 
   const [activePreset, setActivePreset] = useState(initialPreset);
@@ -174,6 +369,7 @@ export function LeafletAoiMap({
     const p = PRESET_REGIONS.find((r) => r.id === initialPreset) || PRESET_REGIONS[0];
     const area = calculatePolygonAreaKm2(p.defaultPolygon);
     const centroid = getCentroid(p.defaultPolygon);
+    coordsRef.current = [...p.defaultPolygon];
     return {
       coordinates: p.defaultPolygon,
       centroid,
@@ -184,65 +380,228 @@ export function LeafletAoiMap({
     };
   });
 
-  // Render or update locked polygon & markers on the Leaflet map
-  const renderPolygonOnMap = useCallback((coords: [number, number][], locked: boolean) => {
+  // Render or update locked polygon & interactive draggable handles on the Leaflet map
+  const renderPolygonOnMap = useCallback((coords: [number, number][], locked: boolean, regionName?: string) => {
     if (!mapRef.current) return;
     const map = mapRef.current;
+    coordsRef.current = [...coords];
 
-    // Remove existing layers
+    // Remove existing layers and markers
     if (polygonLayerRef.current) {
       polygonLayerRef.current.remove();
       polygonLayerRef.current = null;
     }
     vertexMarkersRef.current.forEach((m) => m.remove());
     vertexMarkersRef.current = [];
+    if (centerMarkerRef.current) {
+      centerMarkerRef.current.remove();
+      centerMarkerRef.current = null;
+    }
 
     if (coords.length < 3) return;
 
-    // Draw styled GeoSR polygon
+    // Draw styled GeoSR polygon with prominent orange boundary
     const poly = L.polygon(coords, {
-      color: "#D6532B", // Brand terracotta
-      weight: locked ? 2.5 : 1.5,
-      opacity: 0.95,
+      color: "#D6532B", // Brand terracotta orange
+      weight: 3,
+      opacity: 0.98,
       fillColor: "#D6532B",
-      fillOpacity: locked ? 0.32 : 0.18,
-      dashArray: locked ? undefined : "4, 4",
+      fillOpacity: 0.28,
     }).addTo(map);
 
     polygonLayerRef.current = poly;
 
-    // Add glowing vertex nodes
-    coords.forEach(([lat, lng]) => {
-      const marker = L.circleMarker([lat, lng], {
-        radius: locked ? 4.5 : 3.5,
-        fillColor: "#ffffff",
-        fillOpacity: 1,
-        color: "#D6532B",
-        weight: 2,
+    // Create interactive draggable corner handles for custom boundary selection
+    const handleHtml = `
+      <div style="
+        width: 18px;
+        height: 18px;
+        background: #ffffff;
+        border: 3.5px solid #D6532B;
+        border-radius: 50%;
+        box-shadow: 0 0 0 2px rgba(214,83,43,0.35), 0 2px 6px rgba(0,0,0,0.5);
+        cursor: grab;
+        transition: transform 0.15s ease;
+      "></div>
+    `;
+
+    coords.forEach(([lat, lng], idx) => {
+      const handleIcon = L.divIcon({
+        className: "aoi-vertex-handle-icon",
+        html: handleHtml,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+
+      const marker = L.marker([lat, lng], {
+        draggable: true,
+        icon: handleIcon,
+        title: `Drag corner handle #${idx + 1} to customize AOI boundary`,
+        zIndexOffset: 1000,
       }).addTo(map);
+
+      marker.on("dragstart", () => {
+        map.dragging.disable();
+      });
+
+      marker.on("drag", (e: L.LeafletEvent) => {
+        const target = e.target as L.Marker;
+        const pos = target.getLatLng();
+        // Strictly clamp within Asian training domain
+        const clampedLat = Math.min(82.0, Math.max(-12.0, pos.lat));
+        const clampedLng = Math.min(180.0, Math.max(25.0, pos.lng));
+        const nextCoords = [...coordsRef.current];
+        nextCoords[idx] = [clampedLat, clampedLng];
+        coordsRef.current = nextCoords;
+
+        if (polygonLayerRef.current) {
+          polygonLayerRef.current.setLatLngs(nextCoords);
+        }
+
+        const newCentroid = getCentroid(nextCoords);
+        if (centerMarkerRef.current) {
+          centerMarkerRef.current.setLatLng([newCentroid.lat, newCentroid.lng]);
+        }
+
+        const newArea = calculatePolygonAreaKm2(nextCoords);
+        setCurrentAoi((prev) => ({
+          ...prev,
+          coordinates: nextCoords,
+          areaKm2: Number(newArea.toFixed(2)),
+          centroid: newCentroid,
+          formattedLocation: formatCoordinateString(newCentroid.lat, newCentroid.lng),
+        }));
+      });
+
+      marker.on("dragend", () => {
+        map.dragging.enable();
+        commitAoi(coordsRef.current, true, regionName || currentAoi.regionName || "Custom Area");
+      });
+
       vertexMarkersRef.current.push(marker);
     });
+
+    // Add draggable center handle to allow repositioning the entire AOI box
+    const centroid = getCentroid(coords);
+    const centerHtml = `
+      <div style="
+        width: 24px;
+        height: 24px;
+        background: #D6532B;
+        border: 2px solid #ffffff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+        cursor: move;
+      ">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5">
+          <polyline points="5 9 2 12 5 15"/>
+          <polyline points="9 5 12 2 15 5"/>
+          <polyline points="15 19 12 22 9 19"/>
+          <polyline points="19 9 22 12 19 15"/>
+          <line x1="2" y1="12" x2="22" y2="12"/>
+          <line x1="12" y1="2" x2="12" y2="22"/>
+        </svg>
+      </div>
+    `;
+
+    const centerIcon = L.divIcon({
+      className: "aoi-center-move-icon",
+      html: centerHtml,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
+
+    const centerMarker = L.marker([centroid.lat, centroid.lng], {
+      draggable: true,
+      icon: centerIcon,
+      title: "Drag center to move entire AOI box",
+      zIndexOffset: 999,
+    }).addTo(map);
+
+    let dragOriginCentroid = { lat: centroid.lat, lng: centroid.lng };
+    let dragOriginCoords: [number, number][] = [];
+
+    centerMarker.on("dragstart", () => {
+      map.dragging.disable();
+      dragOriginCentroid = getCentroid(coordsRef.current);
+      dragOriginCoords = [...coordsRef.current];
+    });
+
+    centerMarker.on("drag", (e: L.LeafletEvent) => {
+      const pos = (e.target as L.Marker).getLatLng();
+      const dLat = pos.lat - dragOriginCentroid.lat;
+      const dLng = pos.lng - dragOriginCentroid.lng;
+      const movedCoords = dragOriginCoords.map(([lt, lg]) => {
+        const nLat = Math.min(82.0, Math.max(-12.0, lt + dLat));
+        const nLng = Math.min(180.0, Math.max(25.0, lg + dLng));
+        return [nLat, nLng] as [number, number];
+      });
+      coordsRef.current = movedCoords;
+
+      if (polygonLayerRef.current) {
+        polygonLayerRef.current.setLatLngs(movedCoords);
+      }
+
+      vertexMarkersRef.current.forEach((vm, i) => {
+        if (movedCoords[i]) vm.setLatLng(movedCoords[i]);
+      });
+
+      const newCentroid = getCentroid(movedCoords);
+      setCurrentAoi((prev) => ({
+        ...prev,
+        coordinates: movedCoords,
+        centroid: newCentroid,
+        formattedLocation: formatCoordinateString(newCentroid.lat, newCentroid.lng),
+      }));
+    });
+
+    centerMarker.on("dragend", () => {
+      map.dragging.enable();
+      commitAoi(coordsRef.current, true, regionName || currentAoi.regionName || "Custom Area");
+    });
+
+    centerMarkerRef.current = centerMarker;
   }, []);
 
   // Update AOI and trigger callback
   const commitAoi = useCallback((coords: [number, number][], locked: boolean, regionName?: string) => {
+    coordsRef.current = [...coords];
     const area = calculatePolygonAreaKm2(coords);
     const centroid = getCentroid(coords);
     const formatted = formatCoordinateString(centroid.lat, centroid.lng);
+    const minLat = Math.min(...coords.map((c) => c[0]));
+    const maxLat = Math.max(...coords.map((c) => c[0]));
+    const minLng = Math.min(...coords.map((c) => c[1]));
+    const maxLng = Math.max(...coords.map((c) => c[1]));
+    const bounds: [[number, number], [number, number]] = [[minLat, minLng], [maxLat, maxLng]];
+
     const data: AoiData = {
       coordinates: coords,
       centroid,
       formattedLocation: formatted,
       areaKm2: Number(area.toFixed(2)),
       isLocked: locked,
+      bounds,
       regionName,
     };
     setCurrentAoi(data);
     setIsLocked(locked);
-    renderPolygonOnMap(coords, locked);
+    renderPolygonOnMap(coords, locked, regionName);
     if (onAoiChange) {
       onAoiChange(data);
     }
+
+    // Capture snapshot strictly clipped within the orange boundary polygon
+    captureAoiMapSnapshot(coords, mapRef.current, regionName).then((b64) => {
+      const withSnapshot: AoiData = { ...data, snapshotBase64: b64 };
+      setCurrentAoi(withSnapshot);
+      if (onAoiChange) {
+        onAoiChange(withSnapshot);
+      }
+    });
   }, [onAoiChange, renderPolygonOnMap]);
 
   // Initialize Map
@@ -251,19 +610,21 @@ export function LeafletAoiMap({
 
     const preset = PRESET_REGIONS.find((p) => p.id === initialPreset) || PRESET_REGIONS[0];
 
-    // Create Leaflet map instance
+    // Create Leaflet map instance constrained to Asian Geographic Dataset Domain
     const map = L.map(containerRef.current, {
       center: [preset.lat, preset.lng],
       zoom: preset.zoom,
-      minZoom: 3,
+      minZoom: 4,
       maxZoom: 18,
+      maxBounds: ASIA_BOUNDS,
+      maxBoundsViscosity: 1.0, // Strictly enforce Asian continent boundary
       zoomControl: false,
       attributionControl: false,
       scrollWheelZoom: true,
       dragging: true,
       touchZoom: true,
       tapHold: false,
-      bounceAtZoomLimits: false,
+      bounceAtZoomLimits: true,
     });
 
     mapRef.current = map;
@@ -307,13 +668,14 @@ export function LeafletAoiMap({
       {
         maxZoom: 19,
         attribution: "Esri World Imagery",
+        crossOrigin: "anonymous",
       }
     );
 
     // Hybrid labels layer
     const labelLayer = L.tileLayer(
       "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-      { maxZoom: 19 }
+      { maxZoom: 19, crossOrigin: "anonymous" }
     );
 
     // Street layer (CartoDB Positron)
@@ -322,6 +684,7 @@ export function LeafletAoiMap({
       {
         maxZoom: 19,
         attribution: "CartoDB Voyager",
+        crossOrigin: "anonymous",
       }
     );
 
@@ -338,8 +701,15 @@ export function LeafletAoiMap({
       setMouseCoord(formatCoordinateString(e.latlng.lat, e.latlng.lng));
     });
 
-    // Render initial polygon
+    // Render initial polygon and take initial snapshot
     renderPolygonOnMap(preset.defaultPolygon, true);
+    captureAoiMapSnapshot(preset.defaultPolygon, map, preset.name).then((b64) => {
+      setCurrentAoi((prev) => {
+        const next = { ...prev, snapshotBase64: b64 };
+        if (onAoiChange) onAoiChange(next);
+        return next;
+      });
+    });
 
     // Cleanup on unmount
     return () => {
@@ -382,10 +752,10 @@ export function LeafletAoiMap({
     const padLat = latSpan * 0.2;
     const padLng = lngSpan * 0.2;
 
-    const n = north - padLat;
-    const s = south + padLat;
-    const e = east - padLng;
-    const w = west + padLng;
+    const n = Math.min(82.0, Math.max(-12.0, north - padLat));
+    const s = Math.min(82.0, Math.max(-12.0, south + padLat));
+    const e = Math.min(180.0, Math.max(25.0, east - padLng));
+    const w = Math.min(180.0, Math.max(25.0, west + padLng));
 
     const boxPolygon: [number, number][] = [
       [n, w],
@@ -412,6 +782,10 @@ export function LeafletAoiMap({
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
+        if (!isWithinAsiaDomain(latitude, longitude)) {
+          alert("Your detected location is outside the Asian satellite training domain (25°E–180°E, 12°S–82°N). The GeoSRNet CNN model was trained exclusively on Asian satellite datasets.");
+          return;
+        }
         if (mapRef.current) {
           mapRef.current.flyTo([latitude, longitude], 14, { duration: 1.5 });
           // create a ~2x2km AOI around user
@@ -439,7 +813,9 @@ export function LeafletAoiMap({
     const handleMapClick = (e: L.LeafletMouseEvent) => {
       if (isLocked) return;
       if (activeTool === "polygon") {
-        const newPt: [number, number] = [e.latlng.lat, e.latlng.lng];
+        const lat = Math.min(82.0, Math.max(-12.0, e.latlng.lat));
+        const lng = Math.min(180.0, Math.max(25.0, e.latlng.lng));
+        const newPt: [number, number] = [lat, lng];
         const next = [...customPoints, newPt];
         setCustomPoints(next);
         renderPolygonOnMap(next, false);
@@ -527,6 +903,20 @@ export function LeafletAoiMap({
         </div>
       </div>
 
+      {/* Visual Instruction Badge */}
+      <div className="absolute top-11 left-2 pointer-events-none z-20 flex items-center gap-1.5 bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg text-white text-[10.5px] border border-white/10 shadow-sm">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#D6532B] animate-ping" />
+        <span className="font-medium text-white/90">
+          <strong className="text-[#D6532B]">Interactive AOI:</strong> Drag corner handles to customize boundary · Drag center to move
+        </span>
+      </div>
+
+      {/* Asian Training Domain Badge */}
+      <div className="hidden sm:flex absolute top-11 right-2 pointer-events-none z-20 items-center gap-1.5 bg-emerald-950/85 backdrop-blur-md px-2.5 py-1 rounded-lg text-emerald-300 text-[10.5px] border border-emerald-500/30 shadow-sm">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <span className="font-semibold">Model Domain: Asia (25°E–180°E)</span>
+      </div>
+
       {/* Floating Bottom Left: Zoom and Draw Controls */}
       <div className="absolute bottom-10 left-2 z-20 flex flex-col gap-1 pointer-events-auto bg-surface/90 backdrop-blur-md p-1 rounded-lg border border-line-strong shadow-sm">
         <button
@@ -573,18 +963,21 @@ export function LeafletAoiMap({
           {isLocked ? (
             <>
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <span className="font-semibold text-emerald-300">LOCKED</span>
+              <span className="font-semibold text-emerald-300">AOI READY</span>
               <span className="text-white/40">|</span>
               <span className="font-semibold">{currentAoi.areaKm2} km²</span>
               <span className="hidden sm:inline text-white/70 font-mono text-[10px]">
                 ({currentAoi.formattedLocation})
+              </span>
+              <span className="text-amber-300 font-semibold text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-400/30">
+                Boundary Draggable
               </span>
             </>
           ) : (
             <>
               <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping shrink-0" />
               <span className="text-amber-300 font-semibold">ADJUSTING</span>
-              <span className="text-white/70 text-[10.5px]">Pan/Zoom to aim</span>
+              <span className="text-white/70 text-[10.5px]">Pan/Zoom or drag handles</span>
             </>
           )}
         </div>

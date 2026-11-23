@@ -27,7 +27,11 @@ export function imageFor(seed: string): string | null {
   return null;
 }
 
-/** False-colour thermal image for uncertainty / heatmap tiles. */
+/** False-colour thermal image for uncertainty / heatmap tiles in Asian geographic training domain. */
 export function heatImageFor(seed: string): string {
-  return hashInt(seed) % 2 === 0 ? "/imagery/thermal-chicago.jpg" : "/imagery/thermal-cushing.jpg";
+  const s = seed.toLowerCase();
+  if (s.includes("siachen") || s.includes("snow") || s.includes("glacier")) {
+    return "/imagery/thermal-siachen.jpg";
+  }
+  return hashInt(seed) % 2 === 0 ? "/imagery/thermal-ladakh.jpg" : "/imagery/thermal-siachen.jpg";
 }

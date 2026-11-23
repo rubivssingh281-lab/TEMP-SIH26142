@@ -29,9 +29,40 @@ def report_comparison(job_id: str):
     return _pdf(comparison_snapshot_pdf(data_service.build_comparison(job_id)), f"comparison-snapshot-{job_id}.pdf")
 
 @router.get("/reports/job/{job_id}")
-def report_job(job_id: str):
-    job = next((j for j in data_service.QUEUE_JOBS if j["job_id"] == job_id), data_service.QUEUE_JOBS[0])
-    job = {**job, "job_id": job_id}
+async def report_job(job_id: str):
+    job = next((j for j in data_service.QUEUE_JOBS if j["job_id"] == job_id), None)
+    
+    # Augment with DB job details if available
+    try:
+        from app.db.session import AsyncSessionLocal
+        from app.repository.storage import StorageRepository
+        async with AsyncSessionLocal() as db:
+            db_job = await StorageRepository.get_job(db, job_id)
+            if db_job:
+                base = job or {}
+                job = {
+                    **base,
+                    "job_id": db_job.id,
+                    "project": db_job.name or base.get("project", "Geospatial Analysis"),
+                    "status": "completed" if db_job.status in ("done", "completed") else (db_job.status or "completed"),
+                    "satellite_source": db_job.satellite_source or base.get("satellite_source", "Sentinel-2 MSI"),
+                    "target_resolution": f"{db_job.target_resolution_m or 2.5}m / pixel (4× Gain)",
+                    "area_km2": db_job.area_km2 or base.get("area_km2", 12.64),
+                    "aoi_coordinates": db_job.aoi_coordinates or base.get("aoi_coordinates"),
+                    "compute_node": base.get("compute_node", "GPU-Worker-1"),
+                    "gpu": base.get("gpu", "NVIDIA A100-SXM4-40GB"),
+                    "tiles_processed": base.get("tiles_processed", 1280),
+                    "tiles_total": base.get("tiles_total", 1280),
+                    "throughput_mbps": base.get("throughput_mbps", 385.0),
+                }
+    except Exception:
+        pass
+
+    if not job:
+        job = {**data_service.QUEUE_JOBS[0], "job_id": job_id}
+    else:
+        job = {**job, "job_id": job_id}
+
     return _pdf(job_manifest_pdf(job), f"job-manifest-{job_id}.pdf")
 
 @router.get("/reports/invoice/{inv_id}")

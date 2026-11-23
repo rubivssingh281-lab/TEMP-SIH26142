@@ -1,6 +1,7 @@
 import os
 import logging
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.config import settings
@@ -18,6 +19,8 @@ async_engine_kwargs = {
 
 if "sqlite" in settings.DATABASE_URL:
     async_connect_args["check_same_thread"] = False
+    async_connect_args["timeout"] = 30.0
+    async_engine_kwargs["poolclass"] = NullPool
 else:
     async_engine_kwargs.update({
         "pool_recycle": 300,
@@ -48,6 +51,8 @@ sync_engine_kwargs = {
 
 if "sqlite" in settings.SYNC_DATABASE_URL:
     sync_connect_args["check_same_thread"] = False
+    sync_connect_args["timeout"] = 30.0
+    sync_engine_kwargs["poolclass"] = NullPool
 else:
     sync_engine_kwargs.update({
         "pool_recycle": 300,

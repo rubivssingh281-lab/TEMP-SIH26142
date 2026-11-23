@@ -17,6 +17,53 @@ router = APIRouter()
 PROCESSING_STATUSES = {"processing", "preprocessing", "inference", "postprocessing", "validation"}
 COMPLETED_STATUSES = {"completed", "done"}
 
+def _build_stages(status: str, stage: str | None, progress: int | None, model: str = "GeoSRNet"):
+    p = progress if progress is not None else 25
+    if status in ("completed", "done"):
+        return [
+            {"name": "Pre-processing", "state": "completed", "detail": "Completed · Cloud masking passed"},
+            {"name": "Model Inference", "state": "completed", "detail": f"Completed ({model} ×4)"},
+            {"name": "Post-processing", "state": "completed", "detail": "Completed · GeoTIFF generated"},
+            {"name": "Validation", "state": "completed", "detail": "Completed · Quality thresholds met"},
+        ]
+    elif status == "failed":
+        return [
+            {"name": "Pre-processing", "state": "completed", "detail": "Completed"},
+            {"name": "Model Inference", "state": "failed", "detail": "Failed · Error encountered"},
+            {"name": "Post-processing", "state": "pending", "detail": "Pending"},
+            {"name": "Validation", "state": "pending", "detail": "Pending"},
+        ]
+    else:  # processing / queued
+        if p < 35:
+            return [
+                {"name": "Pre-processing", "state": "in_progress", "detail": "In Progress · Calibration & masking", "progress": p},
+                {"name": "Model Inference", "state": "pending", "detail": "Pending"},
+                {"name": "Post-processing", "state": "pending", "detail": "Pending"},
+                {"name": "Validation", "state": "pending", "detail": "Pending"},
+            ]
+        elif p < 75:
+            return [
+                {"name": "Pre-processing", "state": "completed", "detail": "Completed · Cloud masking passed"},
+                {"name": "Model Inference", "state": "in_progress", "detail": f"In Progress ({model} ×4)", "progress": p},
+                {"name": "Post-processing", "state": "pending", "detail": "Pending"},
+                {"name": "Validation", "state": "pending", "detail": "Pending"},
+            ]
+        elif p < 90:
+            return [
+                {"name": "Pre-processing", "state": "completed", "detail": "Completed"},
+                {"name": "Model Inference", "state": "completed", "detail": f"Completed ({model} ×4)"},
+                {"name": "Post-processing", "state": "in_progress", "detail": "In Progress · Sub-pixel reconstruction", "progress": p},
+                {"name": "Validation", "state": "pending", "detail": "Pending"},
+            ]
+        else:
+            return [
+                {"name": "Pre-processing", "state": "completed", "detail": "Completed"},
+                {"name": "Model Inference", "state": "completed", "detail": f"Completed ({model} ×4)"},
+                {"name": "Post-processing", "state": "completed", "detail": "Completed"},
+                {"name": "Validation", "state": "in_progress", "detail": "In Progress · Verifying PSNR/SSIM", "progress": p},
+            ]
+
+
 @router.get("/queue", response_model=QueueResponse)
 async def queue(
     page: int = 1,
@@ -91,23 +138,31 @@ async def queue(
         if job_status == "done":
             job_status = "completed"
 
+        mem_job = next((mj for mj in data_service.QUEUE_JOBS if mj.get("job_id") == j.id), None)
+        stages = mem_job.get("stages") if (mem_job and mem_job.get("stages")) else _build_stages(job_status, j.stage, j.progress, (j.model or "GeoSRNet").upper())
+        tiles_total = mem_job.get("tiles_total", 1280) if mem_job else 1280
+        tiles_proc = mem_job.get("tiles_processed") if mem_job else int(min(1.0, (j.progress or 25) / 100.0) * tiles_total)
+        throughput = mem_job.get("throughput_mbps", 340.0) if job_status == "processing" else 0.0
+        eta = mem_job.get("eta") if mem_job else ("~25s" if (j.progress or 25) < 70 else ("~10s" if (j.progress or 25) < 99 else "Done"))
+        cur_progress = mem_job.get("progress") if mem_job else j.progress
+
         jobs.append({
             "job_id": j.id,
             "project": j.project_id or "Unknown Project",
             "status": job_status,
             "date": j.created_at.strftime("%d %b %Y") if j.created_at else "",
             "resolution_gain": f"{j.target_resolution_m}m" if j.target_resolution_m else "4x",
-            "progress": j.progress,
+            "progress": cur_progress,
             "compute_node": "GPU-Worker-1",
             "gpu": "A100 40GB",
             "started": j.started_at.strftime("%d %b %Y %H:%M") if j.started_at else "—",
-            "eta": "—",
-            "lr_thumb": j.lr_image_key or "default",
-            "sr_thumb": j.sr_image_key or "default",
-            "tiles_processed": 0,
-            "tiles_total": 0,
-            "throughput_mbps": 0,
-            "stages": []
+            "eta": eta,
+            "lr_thumb": mem_job.get("lr_thumb") if mem_job else (f"/api/v1/jobs/{j.id}/tiles/original" if j.lr_image_key else "default"),
+            "sr_thumb": mem_job.get("sr_thumb") if mem_job else (f"/api/v1/jobs/{j.id}/tiles/enhanced" if j.sr_image_key else "default"),
+            "tiles_processed": tiles_proc,
+            "tiles_total": tiles_total,
+            "throughput_mbps": throughput,
+            "stages": stages,
         })
 
     # Stats

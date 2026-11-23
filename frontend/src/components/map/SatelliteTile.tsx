@@ -80,6 +80,21 @@ export function SatelliteTile({
   className?: string;
   showStructure?: boolean;
 }) {
+  if (seed && (seed.startsWith("/") || seed.startsWith("http") || seed.startsWith("data:") || seed.startsWith("blob:"))) {
+    return (
+      <img
+        src={seed}
+        alt="Satellite Layer"
+        draggable={false}
+        className={cn(
+          "w-full h-full object-cover select-none transition-all",
+          variant === "lr" && "brightness-95 contrast-90 filter",
+          className
+        )}
+      />
+    );
+  }
+
   const model = useMemo(() => {
     const rand = seededRandom(seed);
     const biome = biomeFor(seed);

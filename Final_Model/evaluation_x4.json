@@ -1,0 +1,12 @@
+{
+    "scale": "4x",
+    "validation_L1": 0.014983,
+    "bicubic_PSNR": 31.003,
+    "model_PSNR": 32.492,
+    "bicubic_SSIM": 0.8119,
+    "model_SSIM": 0.8663,
+    "SAM_degrees": 2.3030455,
+    "NDVI_RMSE": 0.065428175,
+    "degradation_MAE": 0.0015712732,
+    "ground_truth": "synthetic"
+}

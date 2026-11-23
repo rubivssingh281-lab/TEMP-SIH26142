@@ -262,6 +262,7 @@ export interface NewJobPayload {
   area_km2?: number;
   location?: string;
   bounds?: number[][];
+  snapshot_base64?: string;
 }
 
 /* --------------------------------------------------------------------- Settings */

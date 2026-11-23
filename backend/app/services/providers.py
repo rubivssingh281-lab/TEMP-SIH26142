@@ -10,12 +10,13 @@ from typing import Callable, cast
 from app.services.inference import InferenceService, MockInferenceService
 from app.services.preprocessing import MockPreprocessingService, PreprocessingService, RasterioPreprocessingService
 from app.services.validation import MockValidationService, ValidationService
+from app.services.real_validation import RealValidationService
 from app.core.config import settings
 
 
 _preprocessing_service = RasterioPreprocessingService() if settings.USE_REAL_GEOSPATIAL else MockPreprocessingService()
 _inference_service = MockInferenceService()
-_validation_service = MockValidationService()
+_validation_service = RealValidationService()
 _inference_factory_service: InferenceService | None = None
 
 

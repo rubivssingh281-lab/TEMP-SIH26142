@@ -1,0 +1,1 @@
+{"psnr": 43.346, "ssim": 0.9984, "sam": 0.43, "ergas": 0.4449, "ndvi_consistency_rmse": 0.011006, "lpips": null, "method": "self_consistency"}

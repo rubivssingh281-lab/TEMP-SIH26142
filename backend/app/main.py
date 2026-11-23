@@ -15,7 +15,6 @@ from app.core.auth import Principal, reset_principal, set_principal
 from app.db.session import AsyncSessionLocal
 from app.repository.storage import StorageRepository, object_storage
 from sqlalchemy import text
-import redis
 
 logger = logging.getLogger(__name__)
 request_count = Counter("http_requests_total", "Total HTTP requests", ["method", "path", "status"])
@@ -208,6 +207,8 @@ def healthz():
 @app.get("/readyz")
 async def readyz():
     checks = {}
+
+    # --- Database (always checked) ---
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
@@ -215,20 +216,27 @@ async def readyz():
     except Exception:
         checks["database"] = "failed"
 
-    try:
-        await asyncio.to_thread(redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT).ping)
-        checks["redis"] = "ok"
-    except Exception:
-        checks["redis"] = "failed"
+    # --- Redis (only when not using local/SQLite stack) ---
+    if settings.STORAGE_BACKEND != "local":
+        try:
+            import redis as _redis
+            await asyncio.to_thread(_redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT).ping)
+            checks["redis"] = "ok"
+        except Exception:
+            checks["redis"] = "failed"
+    else:
+        checks["redis"] = "skipped"
 
+    # --- Object storage ---
     try:
         await asyncio.to_thread(object_storage._ensure_ready)
         checks["object_storage"] = "ok"
     except Exception:
         checks["object_storage"] = "failed"
 
-    if any(value != "ok" for value in checks.values()):
-        raise APIError(503, "dependencies_unavailable", "One or more backend dependencies are unavailable")
+    failed = [k for k, v in checks.items() if v == "failed"]
+    if failed:
+        raise APIError(503, "dependencies_unavailable", f"Unavailable: {', '.join(failed)}")
     return {"status": "ready", "checks": checks}
 
 

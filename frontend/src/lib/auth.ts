@@ -79,26 +79,28 @@ export function deriveInitials(name: string, email = ""): string {
   return cleanEmail.slice(0, 2).toUpperCase();
 }
 
+export const DEFAULT_USER: CurrentUserProfile = {
+  id: "operator",
+  email: "operator@bhudristi.gov.in",
+  name: "Operator",
+  initials: "OP",
+  role: "Geospatial Analyst",
+  organization: "National Geospatial Platform",
+  department: "Space Technology",
+  phone: "",
+  employee_id: "GEO-2026",
+  clearance_level: "Level 3 - Confidential",
+  region: "New Delhi, India",
+  lastLogin: "Active Session",
+  darkMode: false,
+  emailDigest: "Daily",
+  landingPage: "Dashboard",
+  timezone: "(GMT+05:30) Asia/Kolkata (IST)",
+};
+
 export function getEffectiveUser(): CurrentUserProfile {
   if (typeof window === "undefined") {
-    return {
-      id: "operator",
-      email: "operator@bhudristi.gov.in",
-      name: "Operator",
-      initials: "OP",
-      role: "Geospatial Analyst",
-      organization: "National Geospatial Platform",
-      department: "Space Technology",
-      phone: "",
-      employee_id: "GEO-2026",
-      clearance_level: "Level 3 - Confidential",
-      region: "New Delhi, India",
-      lastLogin: "Active Session",
-      darkMode: false,
-      emailDigest: "Daily",
-      landingPage: "Dashboard",
-      timezone: "(GMT+05:30) Asia/Kolkata (IST)",
-    };
+    return DEFAULT_USER;
   }
 
   try {
@@ -176,9 +178,7 @@ export function updateCurrentUser(updates: Partial<CurrentUserProfile>): Current
 }
 
 export function useCurrentUser(): CurrentUserProfile {
-  const [user, setUser] = useState<CurrentUserProfile>(() => {
-    return getEffectiveUser();
-  });
+  const [user, setUser] = useState<CurrentUserProfile>(DEFAULT_USER);
 
   useEffect(() => {
     setUser(getEffectiveUser());

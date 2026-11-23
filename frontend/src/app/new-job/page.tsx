@@ -26,6 +26,7 @@ import type { ModelType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
 import type { AoiData } from "@/components/map/LeafletAoiMap";
+import { captureAoiMapSnapshot, isWithinAsiaDomain } from "@/components/map/LeafletAoiMap";
 
 // Dynamically import LeafletAoiMap (Leaflet requires browser window APIs)
 const LeafletAoiMap = dynamic(
@@ -82,6 +83,18 @@ export default function NewJobPage() {
   async function submit() {
     setSubmitting(true);
     try {
+      // Validate that AOI coordinates are within the Asian training domain
+      const isOutsideAsia = aoi.coordinates.some(([lat, lng]) => !isWithinAsiaDomain(lat, lng));
+      if (isOutsideAsia) {
+        toast("The GeoSRNet CNN model was trained exclusively on the Asia Satellite Dataset. Please ensure the Area of Interest is within Asia (25°E–180°E, 12°S–82°N).", "error");
+        setSubmitting(false);
+        return;
+      }
+
+      let snapshotBase64 = aoi.snapshotBase64;
+      if (!snapshotBase64) {
+        snapshotBase64 = await captureAoiMapSnapshot(aoi.coordinates, null, aoi.regionName);
+      }
       const res = await api.submitJob({
         project,
         job_name: jobName,
@@ -92,8 +105,10 @@ export default function NewJobPage() {
         aoi_coordinates: aoi.coordinates,
         area_km2: aoi.areaKm2,
         location: aoi.formattedLocation,
+        bounds: aoi.bounds,
+        snapshot_base64: snapshotBase64,
       });
-      toast(`Job ${res.job_id} scheduled for ${aoi.formattedLocation} (${aoi.areaKm2} km²)! Live notification dispatched.`, "success");
+      toast(`Job ${res.job_id} scheduled for ${aoi.formattedLocation} (${aoi.areaKm2} km²)! AOI map snapshot captured for GeoSRNet enhancement.`, "success");
       router.push(`/queue?new=${res.job_id}`);
     } catch (err: any) {
       toast(err?.message || "Failed to submit job", "error");
@@ -212,6 +227,31 @@ export default function NewJobPage() {
               </span>
               <span>Esri World Imagery 0.5m API</span>
             </div>
+
+            {/* AOI Snapshot Preview Badge */}
+            {aoi.snapshotBase64 && (
+              <div className="mt-3 p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/50 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <img
+                    src={aoi.snapshotBase64}
+                    alt="AOI Map Snapshot"
+                    className="h-10 w-10 rounded border border-emerald-300 object-cover shrink-0 shadow-2xs"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-semibold text-emerald-950 flex items-center gap-1.5 truncate">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                      AOI Map Snapshot Captured (512×512)
+                    </div>
+                    <div className="text-[11px] text-emerald-700 truncate">
+                      Extracted from locked bounds · Ready for GeoSRNet 4× inference
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300/60 shrink-0">
+                  Active
+                </span>
+              </div>
+            )}
           </Card>
 
           {/* Real-time Estimated Processing Card (Sideways 3-box on mobile) */}

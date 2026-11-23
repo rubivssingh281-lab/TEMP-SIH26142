@@ -1,0 +1,1 @@
+{"model_version": "GeoSRNet_x4_v1.0", "crs": "EPSG:32643", "scale_factor": 4, "output_resolution_m": 2.5, "metrics": {"psnr": 47.726, "ssim": 0.9962, "sam": 0.1963, "ergas": 0.4432, "ndvi_consistency_rmse": 0.009075, "lpips": null, "method": "self_consistency"}}

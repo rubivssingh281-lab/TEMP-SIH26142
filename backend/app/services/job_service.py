@@ -85,7 +85,21 @@ class JobService:
             
         await StorageRepository.update_job(db, job_id, {"status": "queued"})
         
-        # Enqueue via Celery
-        process_job.delay(job_id)
+        # Enqueue via Celery if available, else in-process async task (for zero-ops local dev)
+        try:
+            if settings.STORAGE_BACKEND != "local":
+                process_job.delay(job_id)
+            else:
+                raise RuntimeError("local_mode_uses_in_process_task")
+        except Exception:
+            import asyncio
+            from app.db.session import AsyncSessionLocal
+            from app.services.orchestrator import Orchestrator
+
+            async def _run_in_background():
+                async with AsyncSessionLocal() as local_db:
+                    await Orchestrator.run_pipeline(local_db, job_id)
+
+            asyncio.create_task(_run_in_background())
         
         return True, ""

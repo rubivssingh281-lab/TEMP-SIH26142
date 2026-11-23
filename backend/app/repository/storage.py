@@ -1,92 +1,118 @@
-import boto3
-from botocore.exceptions import ClientError
-from app.core.config import settings
+import json
+import logging
+from typing import Optional, Dict, Any, Tuple
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.db.models import Job
-from app.core.auth import current_principal
+
 from app.core.config import settings
-import json
-from typing import Optional, Dict, Any, Tuple
-import logging
+from app.core.auth import current_principal
+from app.db.models import Job
 
 logger = logging.getLogger(__name__)
 
-class ObjectStorage:
-    def __init__(self):
-        self.s3_client = boto3.client(
-            's3',
-            endpoint_url=settings.S3_ENDPOINT_URL,
-            aws_access_key_id=settings.S3_ACCESS_KEY,
-            aws_secret_access_key=settings.S3_SECRET_KEY,
-            region_name=settings.S3_REGION
+# ---------------------------------------------------------------------------
+# Choose storage backend: local filesystem (default) or S3/MinIO
+# ---------------------------------------------------------------------------
+
+
+def _build_object_storage():
+    """Instantiate the right storage backend based on settings."""
+    if settings.STORAGE_BACKEND == "local":
+        from app.repository.local_storage import LocalObjectStorage
+        logger.info("Using local filesystem storage at %s", settings.LOCAL_STORAGE_DIR)
+        return LocalObjectStorage()
+
+    # Fall back to S3, but degrade gracefully if boto3/connection unavailable
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+
+        class ObjectStorage:
+            def __init__(self):
+                self.s3_client = boto3.client(
+                    's3',
+                    endpoint_url=settings.S3_ENDPOINT_URL,
+                    aws_access_key_id=settings.S3_ACCESS_KEY,
+                    aws_secret_access_key=settings.S3_SECRET_KEY,
+                    region_name=settings.S3_REGION
+                )
+                self.bucket = settings.S3_BUCKET_JOBS
+                self._bucket_ready = False
+
+            def _ensure_ready(self):
+                if not self._bucket_ready:
+                    self._ensure_bucket()
+                    self._bucket_ready = True
+
+            def _ensure_bucket(self):
+                try:
+                    self.s3_client.head_bucket(Bucket=self.bucket)
+                except ClientError:
+                    self.s3_client.create_bucket(Bucket=self.bucket)
+
+            def write_object(self, job_id: str, object_key: str, data: bytes):
+                self._ensure_ready()
+                key = f"{job_id}/{object_key}"
+                self.s3_client.put_object(Bucket=self.bucket, Key=key, Body=data)
+
+            def read_object(self, job_id: str, object_key: str) -> Optional[bytes]:
+                self._ensure_ready()
+                key = f"{job_id}/{object_key}"
+                try:
+                    response = self.s3_client.get_object(Bucket=self.bucket, Key=key)
+                    return response['Body'].read()
+                except ClientError as e:
+                    if e.response['Error']['Code'] == 'NoSuchKey':
+                        return None
+                    raise
+
+            def delete_object(self, job_id: str, object_key: str):
+                self._ensure_ready()
+                key = f"{job_id}/{object_key}"
+                self.s3_client.delete_object(Bucket=self.bucket, Key=key)
+
+            def get_presigned_url(self, job_id: str, object_key: str, expiration=3600) -> Optional[str]:
+                self._ensure_ready()
+                key = f"{job_id}/{object_key}"
+                try:
+                    self.s3_client.head_object(Bucket=self.bucket, Key=key)
+                    url = self.s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={'Bucket': self.bucket, 'Key': key},
+                        ExpiresIn=expiration
+                    )
+                    return url
+                except ClientError:
+                    return None
+
+        return ObjectStorage()
+
+    except Exception as exc:
+        logger.warning(
+            "S3 storage unavailable (%s), falling back to local filesystem", exc
         )
-        self.bucket = settings.S3_BUCKET_JOBS
-        self._bucket_ready = False
+        from app.repository.local_storage import LocalObjectStorage
+        return LocalObjectStorage()
 
-    def _ensure_ready(self):
-        if not self._bucket_ready:
-            self._ensure_bucket()
-            self._bucket_ready = True
-        
-    def _ensure_bucket(self):
-        try:
-            self.s3_client.head_bucket(Bucket=self.bucket)
-        except ClientError:
-            self.s3_client.create_bucket(Bucket=self.bucket)
 
-    def write_object(self, job_id: str, object_key: str, data: bytes):
-        self._ensure_ready()
-        key = f"{job_id}/{object_key}"
-        self.s3_client.put_object(Bucket=self.bucket, Key=key, Body=data)
+object_storage = _build_object_storage()
 
-    def read_object(self, job_id: str, object_key: str) -> Optional[bytes]:
-        self._ensure_ready()
-        key = f"{job_id}/{object_key}"
-        try:
-            response = self.s3_client.get_object(Bucket=self.bucket, Key=key)
-            return response['Body'].read()
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                return None
-            raise
-
-    def delete_object(self, job_id: str, object_key: str):
-        self._ensure_ready()
-        key = f"{job_id}/{object_key}"
-        self.s3_client.delete_object(Bucket=self.bucket, Key=key)
-
-    def get_presigned_url(self, job_id: str, object_key: str, expiration=3600) -> Optional[str]:
-        self._ensure_ready()
-        key = f"{job_id}/{object_key}"
-        try:
-            # Check if exists
-            self.s3_client.head_object(Bucket=self.bucket, Key=key)
-            url = self.s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': self.bucket, 'Key': key},
-                ExpiresIn=expiration
-            )
-            return url
-        except ClientError:
-            return None
-
-object_storage = ObjectStorage()
 
 class StorageRepository:
     """
-    Adapter bridging the old StorageRepository interface to Postgres & S3.
-    Note: the old interface was sync. We provide async versions here for FastAPI.
+    Adapter bridging the old StorageRepository interface to the active
+    object-storage backend and the async database layer.
     """
-    
+
     @staticmethod
     def write_object(job_id: str, object_key: str, data: bytes):
         object_storage.write_object(job_id, object_key, data)
-        
+
     @staticmethod
     def read_object(job_id: str, object_key: str) -> Optional[bytes]:
         return object_storage.read_object(job_id, object_key)
-        
+
     @staticmethod
     def get_presigned_url(job_id: str, object_key: str) -> Optional[str]:
         return object_storage.get_presigned_url(job_id, object_key)
@@ -117,7 +143,7 @@ class StorageRepository:
                 if hasattr(job, key):
                     setattr(job, key, value)
             await db.commit()
-            
+
     @staticmethod
     async def get_job(db: AsyncSession, job_id: str) -> Optional[Job]:
         query = select(Job).where(Job.id == job_id)

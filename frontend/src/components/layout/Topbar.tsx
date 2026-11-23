@@ -128,6 +128,11 @@ export function Topbar({ onOpenMobileMenu, sidebarCollapsed = false, onToggleSid
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [notifTab, setNotifTab] = useState<"all" | "unread">("all");
   const [testingSmtp, setTestingSmtp] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Load live notifications from backend API
   const refreshNotifications = async () => {
@@ -621,7 +626,7 @@ export function Topbar({ onOpenMobileMenu, sidebarCollapsed = false, onToggleSid
             )}
           >
             <div className="h-9 w-9 rounded-full bg-primary text-white grid place-items-center text-[13px] font-semibold shrink-0 overflow-hidden ring-1 ring-primary/20">
-              {user.photoURL ? (
+              {mounted && user.photoURL ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.photoURL} alt={user.name} className="h-full w-full object-cover" />
               ) : (
@@ -644,7 +649,7 @@ export function Topbar({ onOpenMobileMenu, sidebarCollapsed = false, onToggleSid
               <div className="p-3 rounded-lg bg-canvas/60 border border-line mb-2">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-primary text-white grid place-items-center text-[14px] font-bold shrink-0 overflow-hidden ring-1 ring-primary/20">
-                    {user.photoURL ? (
+                    {mounted && user.photoURL ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={user.photoURL} alt={user.name} className="h-full w-full object-cover" />
                     ) : (

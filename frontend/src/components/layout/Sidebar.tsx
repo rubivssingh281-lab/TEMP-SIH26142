@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -184,9 +185,14 @@ export function Sidebar({
 }
 
 function Avatar({ user }: { user: CurrentUserProfile }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div className="h-9 w-9 shrink-0 rounded-full bg-primary text-white grid place-items-center text-[13px] font-semibold overflow-hidden ring-1 ring-primary/20">
-      {user.photoURL ? (
+      {mounted && user.photoURL ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={user.photoURL} alt={user.name} className="h-full w-full object-cover" />
       ) : (
